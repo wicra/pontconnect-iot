@@ -36,24 +36,7 @@ Les données sont affichées sur un écran OLED intégré et transmises via LoRa
 - **Alimentation** (batterie LiPo ou panneau solaire + régulateur) **_si nécessaire_**
 
 ## Schéma de connexion
-
-```
-+-------------+
-|  TTGO LORA  |
-|    ESP32    |
-+-------------+
-|  GPIO 4 ----+--- DS18B20 (DATA)(ALIM 3V) --- Rés 4.7KΩ --------+
-|             |                                                  |
-|  GPIO 36 ---+--- Capteur TDS(ALIM 3V)                          |
-|             |                                                  |
-|  GPIO 39 ---+--- Capteur pression (DATA)(ALIM 5V) -- Rés 10KΩ -+                             |
-|             |                                                  |
-|  3.3V ------+--------------------------------------------------+
-|             |                       |
-|  GND -------+--- GND capteurs ------+
-|             |
-+-------------+
-```
+![Schéma](assets/images/T3_v1.6.1.png)
 
 [Schéma carte TTGO LoRa32 V2.1](https://github.com/LilyGO/TTGO-LoRa32-V2.1)
 
