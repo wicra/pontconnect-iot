@@ -14,22 +14,30 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+// SHT40
+#include <Adafruit_SHT4x.h>
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SHT4x sht4 = Adafruit_SHT4x();
 
 #define DISABLE_PING 0
 #define DISABLE_BEACONS 0
 
 // CONNEXION LORA 
-static const u1_t PROGMEM APPEUI[8]  = { 0x31, 0xdf, 0x29, 0xff, 0xff, 0x40, 0xee, 0xc0  }; //  c0ee40ffff29df31 (MSB) ID Getway
-static const u1_t PROGMEM DEVEUI[8]  = { 0x03, 0xde, 0xc6, 0xe5, 0xd7, 0x7d, 0x2e, 0xcd }; // cd2e7dd7e5c6de03  DEVEUI APP
-static const u1_t PROGMEM APPKEY[16] = { 0x8d, 0xbc, 0x09, 0xac, 0x4c, 0x96, 0x69, 0xb1, 0xfc, 0x06, 0xc3, 0x3a, 0x98, 0x53, 0xd3, 0xb2 }; //  8dbc09ac4c9669b1fc06c33a985d3b2 (MSB) APPKEY
+static const u1_t PROGMEM APPEUI[8]  = 
+{ 0x31, 0xdf, 0x29, 0xff, 0xff, 0x40, 0xee, 0xc0  }; //  c0ee40ffff29df31 (MSB) ID Getway
+static const u1_t PROGMEM DEVEUI[8]  = 
+{ 0x03, 0xde, 0xc6, 0xe5, 0xd7, 0x7d, 0x2e, 0xcd }; // cd2e7dd7e5c6de03  DEVEUI APP
+static const u1_t PROGMEM APPKEY[16] =
+ { 0x8d, 0xbc, 0x09, 0xac, 0x4c, 0x96, 0x69, 0xb1, 0xfc, 0x06, 0xc3, 0x3a, 0x98, 0x53, 0xd3, 0xb2 };
+//  8dbc09ac4c9669b1fc06c33a985d3b2 (MSB) APPKEY
 
 
-static uint8_t mydata[10]; // TAILLE DE DONNEES
+static uint8_t mydata[8]; // 8 OCTETS DE DONNÉES
 static osjob_t sendjob;
 
 #define ONE_WIRE_BUS 4  // GPIO4 DS18B20
@@ -77,8 +85,14 @@ void printHex2(unsigned v) {
 String loraStatus = "INIT";
 String loraTxStatus = "";
 
+// VARIABLES DE STOCKAGE DES DONNÉES
+float lastTempC = 0.0;
+float lastQppm = 0.0;
+float lastDepth = 0.0;
+float lastHumidity = 0.0;
+
 // FONCTION DE MISE À JOUR DE L'AFFICHAGE OLED
-void updateDisplay(float tempC, float qppm, float depth) {
+void updateDisplay(float tempC, float qppm, float depth, float humidity) {
   display.clearDisplay();
   
   // NOM DU PROJET
@@ -114,14 +128,23 @@ void updateDisplay(float tempC, float qppm, float depth) {
   Serial.print((int)qppm);
   Serial.println(" ppm");
   
-  // PROFONDEUR ( CAPTEUR PRESSION)
+  // PROFONDEUR
   display.setCursor(8, 30);  display.print("Prfd:");
   display.setCursor(45, 30); display.print(String(depth, 1));
   display.print("cm");
   
+  // HUMIDITÉ
+  display.setCursor(85, 30); display.print("H:");
+  display.setCursor(98, 30); display.print(String((int)humidity));
+  display.print("%");
+  
   Serial.print("Profondeur: ");
   Serial.print(depth, 1);
   Serial.println(" cm");
+  
+  Serial.print("Humidité: ");
+  Serial.print(humidity, 1);
+  Serial.println(" %");
   
   // SÉPARATEUR
   display.drawLine(0, 40, 128, 40, SSD1306_WHITE);
@@ -153,18 +176,13 @@ void showMessage(const char* msg, int line = 0) {
   Serial.println(msg);
 }
 
-// VARIABLES DE STOCKAGE DES DONNÉES
-float lastTempC = 0.0;
-float lastQppm = 0.0;
-float lastDepth = 0.0;
-
 // FONCTION D'ENVOI DES DONNÉES
 void do_send(osjob_t* j) {
   loraStatus = "LECTURE";
   loraTxStatus = "capteurs";
 
   // UTILISER LES DERNIÈRES VALEURS SI LA LECTURE ÉCHOUE
-  updateDisplay(lastTempC, lastQppm, lastDepth); 
+  updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity); 
   
   Serial.println("\n==== DÉBUT CYCLE DE MESURE ====");
   
@@ -178,7 +196,7 @@ void do_send(osjob_t* j) {
     Serial.println("Erreur de lecture du capteur");
     loraStatus = "ERREUR";
     loraTxStatus = "capteur temp";
-    updateDisplay(lastTempC, lastQppm, lastDepth);
+    updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
     return;
   }
   
@@ -194,48 +212,67 @@ void do_send(osjob_t* j) {
   float vP = rawP * (3.3f / 4095.0f) * 2.0f;
   float depth = max(0.0f, (vP - 0.5f) / 0.05f);
   
+  // LECTURE DE L'HUMIDITÉ (SHT40)
+  float humidity = 0.0;
+  sensors_event_t humidity_event, temp_event;
+  
+  if (sht4.getEvent(&humidity_event, &temp_event)) {
+    humidity = humidity_event.relative_humidity;
+    Serial.print("Humidité SHT40: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+  } else {
+    Serial.println("Erreur de lecture du capteur SHT40");
+    humidity = lastHumidity;
+  }
+  
   // SAUVEGARDER LES VALEURS POUR L'AFFICHAGE FUTUR
   lastTempC = tempC;
   lastQppm = qppm;
   lastDepth = depth;
+  lastHumidity = humidity;
   
   // CONVERSION DES VALEURS EN FORMAT ENTIER
   int16_t tempFixed = (int16_t)(tempC * 100);    // 2 décimales pour la température
   uint16_t tdsFixed = (uint16_t)(qppm);          // Valeur entière pour TDS en ppm
   uint16_t depthFixed = (uint16_t)(depth * 10);   // 1 décimale pour la profondeur
+  uint16_t humidityFixed = (uint16_t)(humidity * 10); // 1 décimale pour l'humidité
   
   // VERIFICATION DES VALEURS BRUTES DANS LE MONITEUR SÉRIE
   Serial.println("==== VALEURS MESURÉES ====");
   Serial.print("Température: "); Serial.print(tempC); Serial.println(" °C (brut: " + String(tempFixed) + ")");
   Serial.print("Turbidité: "); Serial.print(qppm); Serial.println(" ppm (brut: " + String(tdsFixed) + ")");
   Serial.print("Profondeur: "); Serial.print(depth); Serial.println(" cm (brut: " + String(depthFixed) + ")");
+  Serial.print("Humidité: "); Serial.print(humidity); Serial.println(" % (brut: " + String(humidityFixed) + ")");
   
-  // PREPARATION DU PAYLOAD (6 octets au total: 2 pour temp + 2 pour TDS + 2 pour profondeur)
+  // PREPARATION DU PAYLOAD (8 octets au total: 2 pour temp + 2 pour TDS + 2 pour profondeur + 2 pour humidité)
   mydata[0] = tempFixed & 0xFF;        // Octet de poids faible temp
   mydata[1] = (tempFixed >> 8) & 0xFF; // Octet de poids fort temp
   mydata[2] = tdsFixed & 0xFF;         // Octet de poids faible TDS
   mydata[3] = (tdsFixed >> 8) & 0xFF;  // Octet de poids fort TDS
   mydata[4] = depthFixed & 0xFF;       // Octet de poids faible profondeur
   mydata[5] = (depthFixed >> 8) & 0xFF;// Octet de poids fort profondeur
+  mydata[6] = humidityFixed & 0xFF;    // Octet de poids faible humidité
+  mydata[7] = (humidityFixed >> 8) & 0xFF; // Octet de poids fort humidité
   
   // MISE À JOUR OLED
-  updateDisplay(lastTempC, lastQppm, lastDepth);
+  updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
   
   loraStatus = "ENVOI";
   loraTxStatus = "preparation";
-  updateDisplay(lastTempC, lastQppm, lastDepth);
+  updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
   
   if (LMIC.opmode & OP_TXRXPEND) {
     Serial.println(F("OP_TXRXPEND, not sending"));
     loraStatus = "ERROR";
     loraTxStatus = "TX en cours";
-    updateDisplay(lastTempC, lastQppm, lastDepth);
+    updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
   } else {
-    // ENVOIYER DES DONNÉES 6 OCTETS
-    LMIC_setTxData2(1, mydata, 6, 0);
+    // ENVOYER DES DONNÉES
+    LMIC_setTxData2(1, mydata, 8, 0);
     Serial.println("==== ENVOI LORAWAN ====");
     Serial.println("Payload hexadécimal: ");
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 8; i++) {
       if (mydata[i] < 16) Serial.print("0");
       Serial.print(mydata[i], HEX);
     }
@@ -243,7 +280,7 @@ void do_send(osjob_t* j) {
     Serial.println(F("Packet queued"));
     loraStatus = "ENVOI";
     loraTxStatus = "en cours...";
-    updateDisplay(lastTempC, lastQppm, lastDepth);
+    updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
   }
 }
 
@@ -268,7 +305,7 @@ void onEvent(ev_t ev) {
       Serial.println(F("EV_JOINING"));
       loraStatus = "CONNEXION";
       loraTxStatus = "...";
-      updateDisplay(lastTempC, lastQppm, lastDepth);
+      updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
       break;
     case EV_JOINED:
       Serial.println(F("EV_JOINED"));
@@ -298,7 +335,7 @@ void onEvent(ev_t ev) {
         Serial.println();
         loraStatus = "CONNECTÉ";
         loraTxStatus = "LoRaWAN";
-        updateDisplay(lastTempC, lastQppm, lastDepth);
+        updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
       }
       LMIC_setLinkCheckMode(0);
       break;
@@ -306,7 +343,7 @@ void onEvent(ev_t ev) {
       Serial.println(F("EV_JOIN_FAILED"));
       loraStatus = "ERREUR";
       loraTxStatus = "Join failed";
-      updateDisplay(lastTempC, lastQppm, lastDepth);
+      updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
       break;
     case EV_REJOIN_FAILED:
       Serial.println(F("EV_REJOIN_FAILED"));
@@ -325,7 +362,7 @@ void onEvent(ev_t ev) {
       } else {
         loraTxStatus = "OK";
       }
-      updateDisplay(lastTempC, lastQppm, lastDepth);
+      updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
       os_setTimedCallback(&sendjob, os_getTime() + sec2osticks(TX_INTERVAL), do_send);
       break;
     case EV_LOST_TSYNC:
@@ -373,13 +410,19 @@ void setup() {
     for (;;);
   }
 
+  if (!sht4.begin()) {
+    Serial.println("Impossible de trouver le capteur SHT4x");
+  } else {
+    Serial.println("SHT4x trouvé!");
+    sht4.setPrecision(SHT4X_HIGH_PRECISION);
+    sht4.setHeater(SHT4X_NO_HEATER);
+  }
+
   display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  
-  // ECRAN DE DÉMARRAGE
+  // NOM DU PROJET
   display.fillRect(0, 0, 128, 13, SSD1306_WHITE);
   display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
+  display.setTextSize(1);
   int16_t x, y;
   uint16_t w, h;
   display.getTextBounds("PONTCONNECT", 0, 0, &x, &y, &w, &h);
@@ -395,6 +438,13 @@ void setup() {
   sensors.begin();
   Serial.println("DS18B20 initialized");
 
+  // INITIALISATION DU CAPTEUR SHT40
+  if (!sht4.begin()) {
+    Serial.println("Erreur d'initialisation du capteur SHT40");
+    while (1) delay(10);
+  }
+  Serial.println("SHT40 initialized");
+
   os_init();
   LMIC_reset();
 
@@ -405,11 +455,12 @@ void setup() {
   lastTempC = 0.0;
   lastQppm = 0.0;
   lastDepth = 0.0;
+  lastHumidity = 0.0;
 
   // INITIALISATION DE L'AFFICHAGE
   loraStatus = "INIT";
   loraTxStatus = "LoRaWAN";
-  updateDisplay(lastTempC, lastQppm, lastDepth);
+  updateDisplay(lastTempC, lastQppm, lastDepth, lastHumidity);
 
   do_send(&sendjob);
 }

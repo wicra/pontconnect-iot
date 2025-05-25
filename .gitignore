@@ -1,0 +1,70 @@
+# Dossiers et fichiers générés par PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.pio/libdeps/
+.pio/build/
+
+# Fichiers de configuration utilisateur PlatformIO
+platformio.ini.bak
+
+# Dossiers et fichiers générés par VS Code
+.vscode/
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/extensions.json
+
+# Fichiers système et temporaires
+*.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log
+
+# Fichiers de sauvegarde
+*~
+*.bak
+*.old
+
+# Fichiers Python (si utilisation de scripts)
+__pycache__/
+*.pyc
+
+# Dossiers de build ou binaires
+build/
+bin/
+out/
+
+# Fichiers de configuration MacOS
+.DS_Store
+
+# Fichiers de configuration Linux
+*~
+
+# Fichiers de configuration Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Node.js (si API ou scripts JS)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environnements virtuels Python
+.env/
+.venv/
+ENV/
+env/
+venv/
+
+# Fichiers secrets ou d'environnement
+.env.local
+.env.*.local
+.envrc
+.secret
